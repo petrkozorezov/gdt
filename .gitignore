@@ -1,0 +1,9 @@
+log
+logs
+ebin
+deps
+*~
+*.beam
+erl_crash.dump
+.eunit
+plts

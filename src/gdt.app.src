@@ -1,0 +1,12 @@
+{application, gdt, [
+
+    {description, ""},
+    {vsn, "0.1"},
+    {registered, []},
+    {env, []},
+
+    {applications, [
+        kernel,
+        stdlib
+    ]}
+]}.

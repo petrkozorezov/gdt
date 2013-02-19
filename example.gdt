@@ -1,0 +1,45 @@
+-- import Foo
+
+module Test where
+
+    data Gender = 1: Male
+                | 2: Female
+
+    data Attr = 1: Email String
+              | 2: Phone String
+
+    data Person = Person {
+        1: required uid           :: Integer,
+        2: required name          :: Name,
+        3: optional gender = Male :: Gender,
+        4: optional attrs  = []   :: [Attr]
+    }
+
+
+    -- TODO
+    data Response data = Ok | Ok data | Error String
+
+    rpc get_person_by_id   :: Integer     -> Respose Person
+    rpc get_person_by_name :: String      -> Respose Person
+    rpc add_person         :: Person      -> Respose
+    rpc new_peson          :: Person Time <- 
+
+    -- ideas for future
+    -- db_table attrs  = { primary_key  id =  :: Attr }
+    -- db_req find_user = 
+
+    --table person = PersonInt id name gender attrs
+
+    --data Tree = Leaf Integer | Node Tree Tree
+
+    --data MsgReq = MsgSetNameReq { name :: String } -- record
+    --            | MsgGetNameReq                    -- simple
+    --            | MsgHello
+
+    --data MsgResp = MsgCommonResp { 1: optional events = [] :: [Event] }
+    --             | MsgErrorResp 1: MsgStatus 2: String
+
+    --data Msg = MsgReq MsgReq
+    --         | MsgResp MsgResp
+
+    --def_person a b = Person {uid: a ++ b, name: "hello"}

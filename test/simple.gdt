@@ -1,0 +1,18 @@
+--import Foo
+
+module Test where
+
+    data Gender = 1: Male
+                | 2: Female Integer
+
+    data Attr = Email String
+              | Phone String Integer
+
+    data Person = Person {
+        1: required uid           :: Integer,
+        2: required name          :: String, -- Foo.Name,
+        3: optional gender        :: Gender,
+        4: optional attrs         :: [Attr],
+        5: optional attrs_map     :: <Integer:Attr>
+    } | Test
+

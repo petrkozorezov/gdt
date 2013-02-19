@@ -1,0 +1,27 @@
+-ifndef(_{{ module.name }}_included).
+-define(_{{ module.name }}_included, yeah).
+
+{% for datatype in module.datatypes %}\
+-type({{datatype.name|lowfirst}}(), \
+{% for variant  in datatype.variants %}\
+{% if not forloop.first %} | {% endif %}\
+{% if variant.value.type == "record" %}\
+#{{variant.constructor|lowfirst}}{}\
+{% elif variant.value.type == "simple" %}\
+{ {{variant.constructor|lowfirst}}, {{variant.value.fields|make_type}} }\
+{% elif variant.value.type == "single" %}\
+{{variant.constructor | lowfirst}}\
+{% endif %}\
+{% endfor %}\
+).
+{% endfor %}\
+
+
+-record(person, {
+    uid :: integer(),
+    name :: (string() | binary()),
+    gender :: gender(),
+    test :: (string() | binary())
+}).
+
+-endif.

@@ -16,7 +16,11 @@ eunit: compile
 
 clean: $(REBAR)
 	$(REBAR) clean
+	$(MAKE) -C generators_test clean
 
 distclean: clean
 	$(REBAR) delete-deps
 	rm -rfv plts
+
+generators_test: compile
+	$(MAKE) -C generators_test

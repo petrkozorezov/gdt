@@ -1,0 +1,34 @@
+-- import Foo
+
+module Test where
+
+    data Gender = 1: Male
+                | 2: Female
+
+    data Attr = 1: Email String
+              | 2: Phone String
+
+    type Name = String
+
+    data Person id name = Person {
+        1: required uid                                          :: id,
+        2: required name                                         :: name,
+        3: optional gender = Male                                :: Gender,
+        4: optional attrs  = [Email "test@test.ru", Phone "911"] :: [Attr]
+    }
+
+    data Test = Test {
+        person   = Person {uid: 1, name: "petr", gender: Male, attrs: [Phone "911", Email "petr.kozorezov@gmail.com"]} :: Person Integer String,
+        test_map = <1:"1", 2:"2"> :: <Integer:String>,
+        float = 1.1 :: Float
+    }
+
+    type PersonInt = Person Integer
+
+    data Nothing = Nothing
+    data Response resp_data = Ok | Ok resp_data | Error String
+
+    rpc get_person_by_id   :: Integer            -> Respose PersonInt
+    rpc get_person_by_name :: String             -> Respose PersonInt
+    rpc add_person         :: PersonInt, Boolean -> Respose Nothing, Test
+    rpc new_peson_notify   :: PersonInt, Time    <- 

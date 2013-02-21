@@ -1,1 +1,0 @@
--module(gdt_erlydtl_tags).

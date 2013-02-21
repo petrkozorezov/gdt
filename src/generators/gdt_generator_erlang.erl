@@ -1,7 +1,10 @@
--module(gdtg_erlang).
+-module(gdt_generator_erlang).
 -compile(export_all).
 
 -include_lib("gdt_tree.hrl").
+-import(gdt_utils, [join/2, to_list/1]).
+-import(gdt_tree,  [type_name/1]).
+-import(gdt_utils, [log/3]).
 
 all(Tree) ->
     hrl(Tree) ++
@@ -9,12 +12,12 @@ all(Tree) ->
 
 %% Erlang header file.
 hrl(#g_tree{module=#g_module{name=Name, exprs=Exprs}, imports=Imports}) ->
-    Module = atom(Name),
-    FileName = binary_to_list(Module) ++ ".hrl",
+    Module = module_name(Name),
+    FileName = to_list(Module) ++ ".hrl",
     FileData = 
         ifdef_guard(Module, join("\n", [
-            imports(Imports),
-            datatypes(Exprs)
+            [import(Import) || Import <- Imports],
+            [expr(Expr) || Expr <- Exprs]
         ])),
     [{FileName, FileData}].
 
@@ -24,53 +27,43 @@ ifdef_guard(Module, Body) ->
         "-define(_", Module, "_included, yeah).\n",
         "\n",
         Body,
-        "\n"
+        "\n",
         "-endif.\n"
     ].
 
-imports(Imports) ->
-    [import(Import) || Import <- Imports].
 import(#g_import{name=Name}) ->
-    include(atom(Name)).
+    include(module_name(Name)).
 
 include(Module) ->
     ["-include(\"", Module, ".hrl\").\n"].
 
-datatypes(Exprs) ->
-    [[type_decl(Expr) || Expr <- Exprs]].
+expr(Expr = #g_data{}) -> data(Expr);
+expr(Expr            ) -> log(warn, "Skipping unknown expr ~p", [Expr]), [].
 
-type_decl(#g_data{name=Name, variants=Variants}) ->
+data(#g_data{name=Name, variants=Variants}) ->
     [
-        [record(N, R) || #g_variant{constructor=N, value=(R=#g_variant_record{})} <- Variants],
-        "-type(", atom(Name), "() :: ", join(" | ", [type_decl_variant(V) || V <- Variants]), ").\n"
+        [data_record(N, R) || #g_variant{constructor=N, value=(R=#g_variant_record{})} <- Variants],
+        "-type(", type(Name), " :: ", join(" | ", [data_variant(V) || V <- Variants]), ").\n"
     ].
 
-type_decl_variant(#g_variant{constructor=Name, value=#g_variant_record{}}) ->
-    ["#", atom(Name), "{}"];
-type_decl_variant(#g_variant{constructor=Name, value=#g_variant_simple{fields=Fields}}) ->
-    ["{", atom(Name), ", ", join(", ", [type(T) || T <- Fields]), "}"];
-type_decl_variant(#g_variant{constructor=Name, value=#g_variant_single{}}) ->
-    [atom(Name)].
+data_variant(#g_variant{constructor=Name, value=#g_variant_record{}}) ->
+    ["#", atoml(type_name(Name)), "{}"]; %% TODO
+data_variant(#g_variant{constructor=Name, value=#g_variant_simple{fields=Fields}}) ->
+    ["{", atoml(Name), ", ", join(", ", [type(T) || T <- Fields]), "}"];
+data_variant(#g_variant{constructor=Name, value=#g_variant_single{}}) ->
+    [atoml(type_name(Name))].
 
-record(Name, #g_variant_record{fields=Fields}) ->
-    ["-record(", atom(Name), ", {", join(",", [record_field(F) || F <- Fields]), "\n}).\n"].
+data_record(Name, #g_variant_record{fields=Fields}) ->
+    ["-record(", atoml(type_name(Name)), ", {", join(",", [data_record_field(F) || F <- Fields]), "\n}).\n"].
 
-record_field(#g_field{name=Name, type=Type}) ->
-    ["\n\t", atom(Name), " :: ", type(Type)].
+data_record_field(#g_field{name=Name, type=Type}) ->
+    ["\n\t", atoml(Name), " :: ", type(Type)].
 
-type(<<"String">> ) -> "string() | binary()";
-type(<<"Boolean">>) -> "boolean()";
-type(<<"Integer">>) -> "integer()";
-type(<<"Binary">> ) -> "binary()";
-type(<<"Float">>  ) -> "float()";
-type([<<"List">>, Type]) -> ["list(", type(Type), ")"];
-type([<<"Map">>, T1, T2]) -> ["list({", type(T1), ",", type(T2), "})"];
-type(Type) -> [atom(Type), "()"].
 
 
 %% Erlang implementation file.
 erl(#g_tree{module=#g_module{name=Name, exprs=Exprs}}) ->
-    Module = atom(Name),
+    Module = atoml(Name),
     FileName = binary_to_list(Module) ++ ".erl",
     FileData = [
         "-module(", Module, ").\n",
@@ -127,9 +120,9 @@ encoders(Exprs) ->
         "\tFloat;\n"
         "encode_(binary, Binary) when is_binary(Binary) ->\n"
         "\tBinary;\n"
-        "encode_({list, A}, List) when is_list(List) ->\n"
+        "encode_({list, [A]}, List) when is_list(List) ->\n"
         "\t[encode_(A, E) || E <- List];\n"
-        "encode_({map, A, B}, Map) when is_list(Map) ->\n"
+        "encode_({map, [A, B]}, Map) when is_list(Map) ->\n"
         "\t[{encode_(A, K), encode_(B, V)} || {K, V} <- Map];\n"
         "\n"
         "encode_(Type, _) ->\n",
@@ -138,27 +131,31 @@ encoders(Exprs) ->
 
 encode_type(#g_data{name=Name, variants=Variants}) ->
     [
-        "encode_(", atom(Name), ", ", var(Name), ") ->\n",
-        "\tcase ", var(Name), " of\n",
+        "encode_(", type_tag(Name), ", ", type_var(Name), ") ->\n",
+        "\tcase ", type_var(Name), " of\n",
         [encode_type_variant(V) || V <- Variants],
-        "\t_ ->\n",
-        "\t\terror(bad_data, ", var(Name), ")\n",
+        "\t\t_ ->\n",
+        "\t\t\terror({bad_data, ", type_var(Name), "})\n",
         "\tend;\n"
-    ].
+    ];
+encode_type(V) ->
+    log(warn, "Skipping unknown expr ~p", [V]),
+    [].
+
 
 encode_type_variant(#g_variant{constructor=Name, value=#g_variant_record{fields=Fields}}) ->
     [
-        "\t\t{", atom(Name), [[", ", var(FName)] || #g_field{name=FName} <- Fields], "} -> \n",
+        "\t\t{", atoml(Name), [[", ", type_var(FName)] || #g_field{name=FName} <- Fields], "} -> \n",
         "\t\t\t{[{0, ", binary(Name), "},\n",
         join(",\n", [ 
-            ["\t\t\t\t{", binary(FName), ", ", to_list(FReq), "(encode_(", type_tag(FType), ", ", var(FName), "))}"]
+            ["\t\t\t\t{", binary(FName), ", ", to_list(FReq), "(encode_(", type_tag(FType), ", ", type_var(FName), "))}"]
             || #g_field{name=FName, requirement=FReq, type=FType} <- Fields
         ]), "\n",
         "\t\t\t]};\n"
     ];
 encode_type_variant(#g_variant{constructor=Name, value=#g_variant_simple{fields=Fields}}) ->
     [
-        "\t\t{", atom(Name), [[", A", to_list(N)] || N <- lists:seq(1, length(Fields))], "} ->\n",
+        "\t\t{", atoml(Name), [[", A", to_list(N)] || N <- lists:seq(1, length(Fields))], "} ->\n",
         "\t\t\t{[{0, ", binary(Name), "},\n",
         join(",\n", [
             ["\t\t\t\t{", to_list(N), ", required(encode_(", type_tag(lists:nth(N, Fields)), ", ", "A", to_list(N), "))}"]
@@ -168,7 +165,7 @@ encode_type_variant(#g_variant{constructor=Name, value=#g_variant_simple{fields=
     ];
 encode_type_variant(#g_variant{constructor=Name, value=#g_variant_single{}}) ->
     [
-        "\t\t", atom(Name), " ->\n",
+        "\t\t", atoml(Name), " ->\n",
         "\t\t\t", binary(Name), ";\n"
     ].
 
@@ -179,7 +176,7 @@ decoders(Exprs) ->
         [decode_type(Expr) || Expr <- Exprs], "\n",
         "decode_(string, String) when is_binary(String) ->\n",
         "\tString;\n",
-        "decode_(bool, Boolean) when (Boolean =:= true) or (Boolean =:= false) ->\n",
+        "decode_(boolean, Boolean) when (Boolean =:= true) or (Boolean =:= false) ->\n",
         "\tBoolean;\n",
         "decode_(integer, Integer) when is_integer(Integer) ->\n",
         "\tInteger;\n",
@@ -187,9 +184,9 @@ decoders(Exprs) ->
         "\tFloat;\n",
         "decode_(binary, Binary) when is_binary(Binary) ->\n",
         "\tBinary;\n",
-        "decode_({list, A}, List) when is_list(List) ->\n",
+        "decode_({list, [A]}, List) when is_list(List) ->\n",
         "\t[decode_(A, E) || E <- List];\n",
-        "decode_({map, A, B}, Map) when is_list(Map) ->\n",
+        "decode_({map, [A, B]}, Map) when is_list(Map) ->\n",
         "\t[{decode_(A, K), decode_(B, V)} || {K, V} <- Map];\n",
         "\n",
         "decode_(Type, Data) ->\n",
@@ -198,20 +195,23 @@ decoders(Exprs) ->
 
 decode_type(#g_data{name=Name, variants=Variants}) ->
     [
-        "decode_(", atom(Name), ", ", var(Name), ") ->\n",
-        "\tcase find_variant_tag(0, ", Name, ") of\n",
+        "decode_(", type_tag(Name), ", ", type_var(Name), ") ->\n",
+        "\tcase find_variant_tag(0, ", type_var(Name), ") of\n",
         [decode_type_variant(Name, V) || V <- Variants],
-        "\t_ ->\n",
-        "\t\terror(bad_data, ", var(Name), ")\n",
+        "\t\t_ ->\n",
+        "\t\t\terror({bad_data, ", type_var(Name), "})\n",
         "\tend;\n"
-    ].
+    ];
+decode_type(V) ->
+    log(warn, "Skipping unknown expr ~p", [V]),
+    [].
 
 decode_type_variant(TypeName, #g_variant{constructor=Name, value=#g_variant_record{fields=Fields}}) ->
     [
         "\t\t", binary(Name), " ->\n",
-        "\t\t\t#", atom(Name), "{\n",
+        "\t\t\t#", atoml(Name), "{\n",
         join(",\n", [ 
-            ["\t\t\t\t", atom(FName), " = decode_(", type_tag(FType), ", ", to_list(FReq), "(find_field(", binary(FName), ", ", TypeName, ")))"]
+            ["\t\t\t\t", atoml(FName), " = decode_(", type_tag(FType), ", ", to_list(FReq), "(find_field(", binary(FName), ", ", type_var(TypeName), ")))"]
             || #g_field{name=FName, requirement=FReq, type=FType} <- Fields
         ]), "\n",
         "\t\t\t};\n"
@@ -219,10 +219,10 @@ decode_type_variant(TypeName, #g_variant{constructor=Name, value=#g_variant_reco
 decode_type_variant(TypeName, #g_variant{constructor=Name, value=#g_variant_simple{fields=Fields}}) ->
     [
         "\t\t", binary(Name), " ->\n",
-        "\t\t\t{", atom(Name), ", \n",
-        %decode_msgpack(string, required(find_field(1, Attr)))
+        "\t\t\t{", atoml(Name), ", \n",
+        % decode_msgpack(string, required(find_field(1, Attr)))
         join(",\n", [
-            ["\t\t\t\tdecode_(", type_tag(lists:nth(N, Fields)), ", required(find_field(", to_list(N) , ", ", TypeName, ")))"]
+            ["\t\t\t\tdecode_(", type_tag(lists:nth(N, Fields)), ", required(find_field(", to_list(N) , ", ", type_var(TypeName), ")))"]
             || N <- lists:seq(1, length(Fields))
         ]), "\n",
         "\t\t\t};\n"
@@ -230,35 +230,39 @@ decode_type_variant(TypeName, #g_variant{constructor=Name, value=#g_variant_simp
 decode_type_variant(_, #g_variant{constructor=Name, value=#g_variant_single{}}) ->
     [
         "\t\t", binary(Name), " ->\n",
-        "\t\t\t", atom(Name), ";\n"
+        "\t\t\t", atoml(Name), ";\n"
     ].
 
 
 %% utils
-type_tag([T0, T1, T2]) -> ["{", atom(T0), ", ", type_tag(T1), ", ", type_tag(T2), "}"];
-type_tag([T0, T1]) -> ["{", atom(T0), ", ", type_tag(T1), "}"];
-type_tag(Type) -> atom(Type).
+%% представляет эрланг тип для g-типа
+%% как для параметризованных, так и конкретных типов
+type({type, <<"String">> }) -> "string() | binary()";
+type({Type, Params}) -> [atoml(Type), "(", join(", ", [type(Param) || Param <- Params]), ")"];
+type(TypeOrLabel) ->
+    case {gdt_tree:is_label(TypeOrLabel), TypeOrLabel} of
+        {true, Label} -> var(Label);
+        {false, Type} -> [atoml(Type), "()"]
+    end.
 
-atom(Str)   -> lower(Str).
-string(Str) -> ["\"", Str, "\""].
-binary(Str) -> ["<<\"", Str, "\">>"].
-var(Str)    -> upper(Str).
+%% представляет тэг для g-типа, которые передаются в ф-цию сериализации
+type_tag({Type, Params}) -> ["{", atoml(Type), ", [", join(", ", [type_tag(Param) || Param <- Params]), "]}"];
+type_tag(TypeOrLabel) ->
+    case {gdt_tree:is_label(TypeOrLabel), TypeOrLabel} of
+        {true, Label} -> var(Label);
+        {false, Type} -> atoml(Type)
+    end.
 
-join(_    , [H|[]]) -> H;
-join(Delim, [H|T] ) -> [H, Delim, join(Delim, T)].
+type_var(Name) ->
+    var(type_name(Name)).
 
-to_list(A) when is_list(A)      -> A;
-to_list(A) when is_atom(A)      -> atom_to_list(A);
-to_list(A) when is_integer(A)   -> integer_to_list(A);
-to_list(A) when is_float(A)     -> float_to_list(A);
-to_list(A) when is_binary(A)    -> binary_to_list(A).
+%% представление базовых элементов эрланга (атом, стока, бинарь, "переменная")
+%% атом с переводом первой буквы в lower-case
+atoml      (Str) when is_binary(Str) -> gdt_utils:lower(Str).
+% atom       (Str) when is_binary(Str) -> ["'", Str, "'"].
+string     (Str) when is_binary(Str) -> ["\"", Str, "\""].
+binary     (Str) when is_binary(Str) -> ["<<\"", Str, "\">>"].
+var        (Str) when is_binary(Str) -> gdt_utils:upper(Str).
+record_name(Str) when is_binary(Str) -> atoml(Str). 
+module_name(Str) when is_binary(Str) -> atoml(Str). 
 
-lower(Str) when is_binary(Str) ->
-    list_to_binary(lower(binary_to_list(Str)));
-lower([H|T]) ->
-    string:to_lower([H]) ++ T.
-
-upper(Str) when is_binary(Str) ->
-    list_to_binary(upper(binary_to_list(Str)));
-upper([H|T]) ->
-    string:to_upper([H]) ++ T.

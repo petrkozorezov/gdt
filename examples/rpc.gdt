@@ -1,0 +1,12 @@
+
+import Types
+
+module RPC where
+
+    data Nothing = Nothing
+    data Response resp_data = Ok | Ok resp_data | Error String
+
+    rpc get_person_by_id   id :: id                 -> Respose Person id
+    rpc get_person_by_name id :: String             -> Respose Person id
+    rpc add_person         id :: Person id, Boolean -> Respose Nothing, Test
+    rpc new_peson_notify   id :: Person id, Time    <- 

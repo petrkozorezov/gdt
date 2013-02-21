@@ -1,0 +1,12 @@
+{application, generator_test, [
+
+    {description, ""},
+    {vsn, "0.1"},
+    {registered, []},
+    {env, []},
+
+    {applications, [
+        kernel,
+        stdlib
+    ]}
+]}.

@@ -7,6 +7,4 @@ deps
 erl_crash.dump
 .eunit
 plts
-gdt
-src/gdt_scanner.erl
-src/gdt_parser.erl
+src/types.*

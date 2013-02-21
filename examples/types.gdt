@@ -1,0 +1,18 @@
+
+module Types where
+
+    data Gender = 1: Male
+                | 2: Female
+
+    data Attr = 1: Email String
+              | 2: Phone String
+
+    data Person id name = Person {
+        1: required uid                                          :: id,
+        2: optional name                                         :: String,
+        3: optional gender = Male                                :: Gender,
+        4: optional attrs  = [Email "test@test.ru", Phone "911"] :: [Attr]
+    }
+
+    type PersonI = Person Integer
+    type PersonS = Person String
